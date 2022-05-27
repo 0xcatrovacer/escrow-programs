@@ -15,6 +15,32 @@ pub mod escrow_programs {
         initializer_amount: u64,
         taker_amount: u64,
     ) -> Result<()> {
+
+        let escrow_account = &mut ctx.accounts.escrow_account;
+        let initializer = &mut ctx.accounts.initializer;
+        let initializer_deposit = &mut ctx.accounts.initializer_deposit_token_account;
+        let initializer_receive = &mut ctx.accounts.initializer_receive_token_account;
+
+        escrow_account.initializer_key = *initializer.key;
+        escrow_account.initializer_deposit_token_account = *initializer_deposit.to_account_info().key;
+        escrow_account.initializer_receive_token_account = *initializer_receive.to_account_info().key;
+        escrow_account.initializer_amount = initializer_amount;
+        escrow_account.taker_amount = taker_amount;
+
+        let (vault_authority, _vault_auth_bump) = 
+            Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
+
+        token::set_authority(
+            ctx.accounts.into_set_authority_context(),
+            AuthorityType::AccountOwner,
+            Some(vault_authority),
+        )?;
+
+        token::transfer(
+            ctx.accounts.into_transfer_to_pda_context(),
+            ctx.accounts.escrow_account.initializer_amount,
+        )?;
+
         Ok(())
     }
 }
