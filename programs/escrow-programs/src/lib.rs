@@ -43,6 +43,25 @@ pub mod escrow_programs {
 
         Ok(())
     }
+    
+    pub fn cancel(ctx: Context<Cancel>) -> Result<()> {
+
+        let(_vault_auth, vault_auth_bump) =
+            Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
+        let authority_seeds = &[&ESCROW_PDA_SEED[..], &[vault_auth_bump]];
+
+        token::transfer(
+            ctx.accounts.into_transfer_to_initializer_context(),
+            ctx.accounts.escrow_account.initializer_amount,
+        )?;
+
+        token::close_account(
+            ctx.accounts.into_close_context().with_signer(&[&authority_seeds[..]]),
+        )?;
+
+        Ok(())
+    }
+
 }
 
 #[derive(Accounts)]
