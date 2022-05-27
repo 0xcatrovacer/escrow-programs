@@ -207,6 +207,38 @@ pub struct Exchange<'info> {
     pub token_program: AccountInfo<'info>,
 }
 
+impl<'info> Exchange<'info> {
+    fn into_transfer_to_initializer_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
+        let cpi_accounts = Transfer {
+            from: self.taker_deposit_token_account.to_account_info().clone(),
+            to: self.initializer_receive_token_account.to_account_info().clone(),
+            authority: self.taker.clone(),
+        };
+
+        CpiContext::new(self.token_program.clone(), cpi_accounts)
+    }
+
+    fn into_transfer_to_taker_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
+        let cpi_accounts = Transfer {
+            from: self.vault_account.to_account_info().clone(),
+            to: self.taker_receive_token_account.to_account_info().clone(),
+            authority: self.vault_authority.clone(),
+        };
+
+        CpiContext::new(self.token_program.clone(), cpi_accounts)
+    }
+
+    fn into_close_context(&self) -> CpiContext<'_, '_, '_, 'info, CloseAccount<'info>> {
+        let cpi_accounts = CloseAccount {
+            account: self.vault_account.to_account_info().clone(),
+            destination: self.initializer.clone(),
+            authority: self.vault_authority.clone(),
+        };
+
+        CpiContext::new(self.token_program.clone(), cpi_accounts)
+    }
+}
+
 #[account]
 pub struct EscrowAccount {
     pub initializer_key: Pubkey,
