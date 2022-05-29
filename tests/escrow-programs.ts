@@ -1,25 +1,35 @@
 import * as anchor from "@project-serum/anchor";
 import { Program } from "@project-serum/anchor";
 import { EscrowPrograms } from "../target/types/escrow_programs";
-import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
-import * as assert from "assert";
 import {
-    TOKEN_PROGRAM_ID,
-    getTokenAccount,
-    createMint,
-    createTokenAccount,
-    mintToAccount,
-} from "./utils";
+    PublicKey,
+    SystemProgram,
+    Transaction,
+    Connection,
+    Commitment,
+} from "@solana/web3.js";
+import { TOKEN_PROGRAM_ID, Token } from "@solana/spl-token";
+import * as assert from "assert";
 
 describe("escrow-programs", () => {
-    const provider = anchor.Provider.local();
+    const program = anchor.workspace.EscrowPrograms as Program<EscrowPrograms>;
+
+    const commitment: Commitment = "processed";
+
+    const connection = new Connection("https://api.devnet.solana.com", {
+        commitment,
+    });
+    const options = anchor.Provider.defaultOptions();
+    const provider = new anchor.Provider(
+        connection,
+        program.provider.wallet,
+        options
+    );
 
     anchor.setProvider(provider);
 
-    const program = anchor.workspace.EscrowPrograms as Program<EscrowPrograms>;
-
-    let mintA = null;
-    let mintB = null;
+    let mintA = null as Token;
+    let mintB = null as Token;
     let initializerTokenAccountA = null;
     let initializerTokenAccountB = null;
     let takerTokenAccountA = null;
@@ -28,75 +38,94 @@ describe("escrow-programs", () => {
     let vault_account_bump = null;
     let vault_auth_pda = null;
 
-    const takerAmount = new anchor.BN(1000);
-    const initializerAmount = new anchor.BN(500);
+    const takerAmount = 1000;
+    const initializerAmount = 500;
 
     const escrowAccount = anchor.web3.Keypair.generate();
+    const payer = anchor.web3.Keypair.generate();
+    const mintAuthority = anchor.web3.Keypair.generate();
     const initializerMainAccount = anchor.web3.Keypair.generate();
     const takerMainAccount = anchor.web3.Keypair.generate();
 
     it("Initialize program state", async () => {
-        const signatureI = await program.provider.connection.requestAirdrop(
-            initializerMainAccount.publicKey,
-            1000000000
+        await provider.connection.confirmTransaction(
+            await provider.connection.requestAirdrop(
+                payer.publicKey,
+                1000000000
+            ),
+            "processed"
         );
-        await program.provider.connection.confirmTransaction(signatureI);
 
-        const signatureT = await program.provider.connection.requestAirdrop(
-            initializerMainAccount.publicKey,
-            1000000000
+        await provider.send(
+            (() => {
+                const tx = new Transaction();
+                tx.add(
+                    SystemProgram.transfer({
+                        fromPubkey: payer.publicKey,
+                        toPubkey: initializerMainAccount.publicKey,
+                        lamports: 100000000,
+                    }),
+                    SystemProgram.transfer({
+                        fromPubkey: payer.publicKey,
+                        toPubkey: takerMainAccount.publicKey,
+                        lamports: 100000000,
+                    })
+                );
+                return tx;
+            })(),
+            [payer]
         );
-        await program.provider.connection.confirmTransaction(signatureT);
 
-        mintA = await createMint(provider, undefined);
-        mintB = await createMint(provider, undefined);
+        mintA = await Token.createMint(
+            provider.connection,
+            payer,
+            mintAuthority.publicKey,
+            null,
+            0,
+            TOKEN_PROGRAM_ID
+        );
 
-        initializerTokenAccountA = await createTokenAccount(
-            provider,
-            mintA,
+        mintB = await Token.createMint(
+            provider.connection,
+            payer,
+            mintAuthority.publicKey,
+            null,
+            0,
+            TOKEN_PROGRAM_ID
+        );
+
+        initializerTokenAccountA = await mintA.createAccount(
             initializerMainAccount.publicKey
         );
-        takerTokenAccountA = await createTokenAccount(
-            provider,
-            mintA,
+        takerTokenAccountA = await mintA.createAccount(
             takerMainAccount.publicKey
         );
 
-        initializerTokenAccountB = await createTokenAccount(
-            provider,
-            mintB,
+        initializerTokenAccountB = await mintB.createAccount(
             initializerMainAccount.publicKey
         );
-        takerTokenAccountB = await createTokenAccount(
-            provider,
-            mintB,
+        takerTokenAccountB = await mintB.createAccount(
             takerMainAccount.publicKey
         );
 
-        await mintToAccount(
-            provider,
-            mintA,
+        await mintA.mintTo(
             initializerTokenAccountA,
-            initializerAmount,
-            provider.wallet.publicKey
+            mintAuthority.publicKey,
+            [mintAuthority],
+            initializerAmount
         );
 
-        await mintToAccount(
-            provider,
-            mintB,
+        await mintB.mintTo(
             takerTokenAccountB,
-            takerAmount,
-            provider.wallet.publicKey
+            mintAuthority.publicKey,
+            [mintAuthority],
+            takerAmount
         );
 
-        let initializerA = await getTokenAccount(
-            provider,
-            initializerTokenAccountA
-        );
+        let initializerA = await mintA.getAccountInfo(initializerTokenAccountA);
+        let takerB = await mintB.getAccountInfo(takerTokenAccountB);
 
-        let takerB = await getTokenAccount(provider, takerTokenAccountB);
-
-        console.log("initializerA: ", initializerA);
-        console.log("takerB: ", takerB);
+        assert.equal(initializerA.amount, initializerAmount);
+        assert.equal(takerB.amount, takerAmount);
     });
 });
