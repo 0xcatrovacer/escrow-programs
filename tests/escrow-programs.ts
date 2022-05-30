@@ -1,6 +1,6 @@
 import * as anchor from "@project-serum/anchor";
 import { Program, BN, IdlAccounts } from "@project-serum/anchor";
-import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
+import { PublicKey, Keypair, Connection, SystemProgram } from "@solana/web3.js";
 import { TOKEN_PROGRAM_ID, Token } from "@solana/spl-token";
 import { assert } from "chai";
 import { EscrowPrograms } from "../target/types/escrow_programs";
@@ -8,10 +8,18 @@ import { EscrowPrograms } from "../target/types/escrow_programs";
 type EscrowAccount = IdlAccounts<EscrowPrograms>["escrowAccount"];
 
 describe("escrow-programs", () => {
-    const provider = anchor.Provider.env();
-    anchor.setProvider(provider);
-
     const program = anchor.workspace.EscrowPrograms as Program<EscrowPrograms>;
+
+    const connection = new Connection("https://api.devnet.solana.com");
+    const options = anchor.Provider.defaultOptions();
+
+    const provider = new anchor.Provider(
+        connection,
+        program.provider.wallet,
+        options
+    );
+
+    anchor.setProvider(provider);
 
     let mintA: Token = null;
     let mintB: Token = null;
@@ -113,7 +121,7 @@ describe("escrow-programs", () => {
 
         const [_pda, _nonce] = await PublicKey.findProgramAddress(
             [Buffer.from(anchor.utils.bytes.utf8.encode("escrow"))],
-            program.programId
+            new PublicKey("2VdVJPpgQhdecDZsqVgJAeGUtrLiNjBGzgkjmowKqjmS")
         );
 
         pda = _pda;
